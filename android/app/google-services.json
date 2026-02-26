@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "452275219744",
+    "project_id": "yala-driver-app1",
+    "storage_bucket": "yala-driver-app1.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:452275219744:android:1e701ee3dfc720af13fb45",
+        "android_client_info": {
+          "package_name": "com.example.yala_driver_app_1"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDpggPTmf3nkRu6JC9cBjbCG6KIVIu9FSc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

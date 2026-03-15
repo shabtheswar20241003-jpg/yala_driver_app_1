@@ -1,12 +1,12 @@
 // lib/features/map/screens/live_map_screen.dart
 import 'dart:async';
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:flutter/services.dart';
-import 'dart:math';
 
 class LiveMapScreen extends StatefulWidget {
   final String driverId;
@@ -25,7 +25,6 @@ class LiveMapScreen extends StatefulWidget {
 
 class _LiveMapScreenState extends State<LiveMapScreen> {
   final MapController _mapController = MapController();
-
   late final FirebaseDatabase _db;
   StreamSubscription<DatabaseEvent>? _driversAddedSub;
   StreamSubscription<DatabaseEvent>? _driversChangedSub;
@@ -38,8 +37,12 @@ class _LiveMapScreenState extends State<LiveMapScreen> {
 
   bool _hasShownZoneWarning = false;
   String? _currentZoneId;
-  bool _hasCenteredOnce =
-      false; // NEW: ensures first recenter only happens once
+  bool _hasCenteredOnce = false;
+
+  // ---------------- Simulation ----------------
+  Timer? _simTimer;
+  final List<Map<String, dynamic>> _simJeeps = [];
+  bool _simRunning = false;
 
   @override
   void initState() {
@@ -56,11 +59,11 @@ class _LiveMapScreenState extends State<LiveMapScreen> {
     _driversChangedSub?.cancel();
     _driversRemovedSub?.cancel();
     _ownLocationSub?.cancel();
+    _simTimer?.cancel();
     super.dispose();
   }
 
-  // ---------- Firebase listeners ----------
-
+  // ---------------- Firebase Listeners ----------------
   void _listenOtherJeeps() {
     final ref = _db.ref('drivers');
 
@@ -100,7 +103,7 @@ class _LiveMapScreenState extends State<LiveMapScreen> {
         _ownLocation = LatLng(lat, lng);
       });
       _checkRestrictedZones(LatLng(lat, lng));
-      _centerMapOnce(); // NEW: recenter map on first location
+      _centerMapOnce();
       return;
     }
 
@@ -111,12 +114,9 @@ class _LiveMapScreenState extends State<LiveMapScreen> {
 
   void _listenOwnLocation() {
     final ref = _db.ref('drivers/${widget.driverId}/location');
-    print('[MapScreen] listening to drivers/${widget.driverId}/location');
-
     _ownLocationSub = ref.onValue.listen(
       (event) {
         final v = event.snapshot.value as Map<Object?, Object?>?;
-        print('[MapScreen] own location snapshot: ${event.snapshot.value}');
         if (v == null) return;
         final lat = (v['lat'] as num?)?.toDouble();
         final lng = (v['lng'] as num?)?.toDouble();
@@ -126,7 +126,7 @@ class _LiveMapScreenState extends State<LiveMapScreen> {
           _ownLocation = LatLng(lat, lng);
         });
         _checkRestrictedZones(LatLng(lat, lng));
-        _centerMapOnce(); // NEW: recenter map on first location
+        _centerMapOnce();
       },
       onError: (err) {
         print('[MapScreen] ownLocationSub error: $err');
@@ -134,16 +134,28 @@ class _LiveMapScreenState extends State<LiveMapScreen> {
     );
   }
 
-  // ---------- Center map helper ----------
+  // ---------------- Map helpers ----------------
   void _centerMapOnce() {
     if (_ownLocation != null && !_hasCenteredOnce) {
       _mapController.move(_ownLocation!, 15.0);
       _hasCenteredOnce = true;
-      print('[MapScreen] Map centered to $_ownLocation');
     }
   }
 
-  // ---------- Restricted zones ----------
+  Future<void> _recenterToOwnLocation() async {
+    if (_ownLocation != null) {
+      _mapController.move(_ownLocation!, 15);
+      return;
+    }
+    try {
+      final p =
+          await Geolocator.getLastKnownPosition() ??
+          await Geolocator.getCurrentPosition();
+      _mapController.move(LatLng(p.latitude, p.longitude), 15);
+    } catch (_) {}
+  }
+
+  // ---------------- Restricted zones ----------------
   void _listenRestrictedZones() async {
     final ref = _db.ref('restricted_zones');
     final snap = await ref.get();
@@ -230,22 +242,9 @@ class _LiveMapScreenState extends State<LiveMapScreen> {
     );
   }
 
-  Future<void> _recenterToOwnLocation() async {
-    if (_ownLocation != null) {
-      _mapController.move(_ownLocation!, 15.0);
-      return;
-    }
-    try {
-      final p =
-          await Geolocator.getLastKnownPosition() ??
-          await Geolocator.getCurrentPosition();
-      _mapController.move(LatLng(p.latitude, p.longitude), 15.0);
-    } catch (_) {}
-  }
-
+  // ---------------- Markers ----------------
   List<Marker> _buildJeepMarkers() {
     final markers = <Marker>[];
-
     if (_ownLocation != null) {
       markers.add(
         Marker(
@@ -256,7 +255,6 @@ class _LiveMapScreenState extends State<LiveMapScreen> {
         ),
       );
     }
-
     _otherJeeps.forEach((id, latlng) {
       markers.add(
         Marker(
@@ -267,16 +265,10 @@ class _LiveMapScreenState extends State<LiveMapScreen> {
         ),
       );
     });
-
     return markers;
   }
 
-  // paste inside _LiveMapScreenState (add imports at top: import 'dart:math';)
-  Timer? _simTimer;
-  final List<Map<String, dynamic>> _simJeeps = [];
-  bool _simRunning = false;
-
-  /// Start in-app simulation of `count` jeeps (writes to /drivers/{id}/location)
+  // ---------------- In-app Simulator ----------------
   void _startInAppSimulation({
     int count = 6,
     int intervalMs = 3000,
@@ -285,13 +277,10 @@ class _LiveMapScreenState extends State<LiveMapScreen> {
     if (_simRunning) return;
     final rnd = Random();
     _simJeeps.clear();
-
-    // base around own location if available, otherwise map center
     final base = _ownLocation ?? LatLng(6.905, 79.861);
 
     for (var i = 0; i < count; i++) {
       final id = 'sim_inapp_${i + 1}';
-      // random initial offset within 'spread' degrees (~0.01 ≈ 1km roughly)
       final lat = base.latitude + (rnd.nextDouble() - 0.5) * spread;
       final lng = base.longitude + (rnd.nextDouble() - 0.5) * spread;
       _simJeeps.add({
@@ -302,19 +291,17 @@ class _LiveMapScreenState extends State<LiveMapScreen> {
       });
     }
 
-    // start periodic updates
     _simTimer = Timer.periodic(Duration(milliseconds: intervalMs), (t) async {
       final now = DateTime.now().toIso8601String();
       for (var s in _simJeeps) {
-        // small random movement
-        final jitterLat = (rnd.nextDouble() - 0.5) * 0.0003; // ~30m
+        final jitterLat = (rnd.nextDouble() - 0.5) * 0.0003;
         final jitterLng = (rnd.nextDouble() - 0.5) * 0.0003;
         s['lat'] = (s['lat'] as double) + jitterLat;
         s['lng'] = (s['lng'] as double) + jitterLng;
 
         final payload = {
-          'lat': (s['lat'] as double),
-          'lng': (s['lng'] as double),
+          'lat': s['lat'],
+          'lng': s['lng'],
           'accuracy': 5 + rnd.nextDouble() * 10,
           'speed': rnd.nextDouble() * 4,
           'timestamp': now,
@@ -322,7 +309,6 @@ class _LiveMapScreenState extends State<LiveMapScreen> {
 
         try {
           await _db.ref('drivers/${s['id']}/location').set(payload);
-          // optional: write small meta once
           await _db.ref('drivers/${s['id']}/meta').set({
             'jeep_id': s['id'],
             'display_name': 'Sim ${s['id']}',
@@ -334,10 +320,8 @@ class _LiveMapScreenState extends State<LiveMapScreen> {
     });
 
     setState(() => _simRunning = true);
-    debugPrint('[Sim] started $count sims');
   }
 
-  /// Stop the in-app simulation and optionally remove nodes
   Future<void> _stopInAppSimulation({bool cleanupNodes = true}) async {
     _simTimer?.cancel();
     _simTimer = null;
@@ -352,111 +336,88 @@ class _LiveMapScreenState extends State<LiveMapScreen> {
         }
       }
     }
+
     _simJeeps.clear();
-    debugPrint('[Sim] stopped and cleaned up: cleanupNodes=$cleanupNodes');
   }
 
   @override
   Widget build(BuildContext context) {
     final center = _ownLocation ?? LatLng(6.905, 79.861);
+
     return Scaffold(
       appBar: AppBar(title: const Text('Live Map (Driver)')),
-      body: Stack(
+      body: FlutterMap(
+        mapController: _mapController,
+        options: MapOptions(
+          center: center,
+          zoom: 13.0,
+          maxZoom: 18.0,
+          minZoom: 5.0,
+        ),
         children: [
-          FlutterMap(
-            mapController: _mapController,
-            options: MapOptions(
-              center: center,
-              zoom: 13.0,
-              maxZoom: 18.0,
-              minZoom: 5.0,
-            ),
-            children: [
-              TileLayer(
-                urlTemplate: "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
-                userAgentPackageName: 'com.example.yala_driver_app',
-              ),
-              MarkerLayer(markers: _buildJeepMarkers()),
-              PolygonLayer(
-                polygons: _restrictedZones.map((z) {
-                  return Polygon(
-                    points: z.polygon,
-                    borderStrokeWidth: 2,
-                    color: z.active
-                        ? Colors.red.withOpacity(0.18)
-                        : Colors.grey.withOpacity(0.10),
-                    borderColor: z.active ? Colors.red : Colors.grey,
-                  );
-                }).toList(),
-              ),
-            ],
+          TileLayer(
+            urlTemplate: "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+            userAgentPackageName: 'com.example.yala_driver_app',
+          ),
+          MarkerLayer(markers: _buildJeepMarkers()),
+          PolygonLayer(
+            polygons: _restrictedZones.map((z) {
+              return Polygon(
+                points: z.polygon,
+                borderStrokeWidth: 2,
+                color: z.active
+                    ? Colors.red.withOpacity(0.18)
+                    : Colors.grey.withOpacity(0.10),
+                borderColor: z.active ? Colors.red : Colors.grey,
+              );
+            }).toList(),
+          ),
+        ],
+      ),
+
+      floatingActionButton: Column(
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
+          FloatingActionButton(
+            heroTag: "recenter",
+            onPressed: _recenterToOwnLocation,
+            child: const Icon(Icons.my_location),
           ),
 
-          Positioned(
-            top: 12,
-            right: 12,
-            child: Column(
-              children: [
-                FloatingActionButton.small(
-                  heroTag: 'recenter',
-                  onPressed: _recenterToOwnLocation,
-                  child: const Icon(Icons.my_location),
-                ),
-                const SizedBox(height: 8),
-                FloatingActionButton.small(
-                  heroTag: 'zoom_in',
-                  onPressed: () => _mapController.move(
-                    _mapController.center,
-                    _mapController.zoom + 1,
-                  ),
-                  child: const Icon(Icons.zoom_in),
-                ),
-                const SizedBox(height: 8),
-                FloatingActionButton.small(
-                  heroTag: 'zoom_out',
-                  onPressed: () => _mapController.move(
-                    _mapController.center,
-                    _mapController.zoom - 1,
-                  ),
-                  child: const Icon(Icons.zoom_out),
-                ),
-              ],
-            ),
+          const SizedBox(height: 10),
+
+          FloatingActionButton(
+            heroTag: "zoom_in",
+            onPressed: () {
+              _mapController.move(
+                _mapController.center,
+                _mapController.zoom + 1,
+              );
+            },
+            child: const Icon(Icons.add),
           ),
 
-          Positioned(
-            bottom: 18,
-            right: 18,
-            child: FloatingActionButton.extended(
-              heroTag: 'report_incident',
-              onPressed: () {
-                Navigator.pushNamed(context, '/incident');
-              },
-              icon: const Icon(Icons.report),
-              label: const Text('Report'),
-            ),
+          const SizedBox(height: 10),
+
+          FloatingActionButton(
+            heroTag: "zoom_out",
+            onPressed: () {
+              _mapController.move(
+                _mapController.center,
+                _mapController.zoom - 1,
+              );
+            },
+            child: const Icon(Icons.remove),
           ),
 
-          Positioned(
-            bottom: 18,
-            left: 18,
-            child: FloatingActionButton.extended(
-              heroTag: 'simulator',
-              backgroundColor: Colors.black,
-              onPressed: () async {
-                if (!_simRunning) {
-                  _startInAppSimulation(
-                    count: 8,
-                    intervalMs: 2000,
-                    spread: 0.02,
-                  );
-                } else {
-                  await _stopInAppSimulation(cleanupNodes: true);
-                }
-              },
-              icon: Icon(_simRunning ? Icons.stop : Icons.directions_car),
-              label: Text(_simRunning ? "Stop Jeeps" : "Simulate Jeeps"),
-            ),
+          const SizedBox(height: 10),
+
+          FloatingActionButton(
+            heroTag: "sim",
+            onPressed: _simRunning
+                ? _stopInAppSimulation
+                : _startInAppSimulation,
+            child: Icon(_simRunning ? Icons.stop : Icons.play_arrow),
           ),
         ],
       ),
@@ -464,11 +425,9 @@ class _LiveMapScreenState extends State<LiveMapScreen> {
   }
 }
 
-// ---------------------- Marker Widgets ----------------------
-
+// ---------------- Marker Widgets ----------------
 class _OwnMarkerWidget extends StatelessWidget {
   const _OwnMarkerWidget();
-
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -479,8 +438,8 @@ class _OwnMarkerWidget extends StatelessWidget {
           BoxShadow(color: Colors.black26, blurRadius: 6, offset: Offset(0, 2)),
         ],
       ),
-      child: Padding(
-        padding: const EdgeInsets.all(8.0),
+      child: const Padding(
+        padding: EdgeInsets.all(8.0),
         child: Icon(Icons.directions_bus, color: Colors.white, size: 28),
       ),
     );
@@ -517,14 +476,12 @@ class _OtherJeepMarker extends StatelessWidget {
   }
 }
 
-// ---------------------- Restricted Zone Model ----------------------
-
+// ---------------- Restricted Zone Model ----------------
 class _Zone {
   final String id;
   final String name;
   final List<LatLng> polygon;
   final bool active;
-
   _Zone({
     required this.id,
     required this.name,

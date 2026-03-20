@@ -7,6 +7,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:flutter/services.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class LiveMapScreen extends StatefulWidget {
   final String driverId;
@@ -26,14 +27,21 @@ class LiveMapScreen extends StatefulWidget {
 class _LiveMapScreenState extends State<LiveMapScreen> {
   final MapController _mapController = MapController();
   late final FirebaseDatabase _db;
+
   StreamSubscription<DatabaseEvent>? _driversAddedSub;
   StreamSubscription<DatabaseEvent>? _driversChangedSub;
   StreamSubscription<DatabaseEvent>? _driversRemovedSub;
   StreamSubscription<DatabaseEvent>? _ownLocationSub;
 
+  // Supabase incidents stream subscription
+  StreamSubscription<dynamic>? _incidentSub;
+
   LatLng? _ownLocation;
   final Map<String, LatLng> _otherJeeps = {};
   final List<_Zone> _restrictedZones = [];
+
+  // Incident list (from Supabase)
+  final List<_Incident> _incidents = [];
 
   bool _hasShownZoneWarning = false;
   String? _currentZoneId;
@@ -48,9 +56,12 @@ class _LiveMapScreenState extends State<LiveMapScreen> {
   void initState() {
     super.initState();
     _db = FirebaseDatabase(databaseURL: widget.databaseUrl);
+
     _listenRestrictedZones();
     _listenOtherJeeps();
     _listenOwnLocation();
+
+    _listenIncidents();
   }
 
   @override
@@ -59,8 +70,55 @@ class _LiveMapScreenState extends State<LiveMapScreen> {
     _driversChangedSub?.cancel();
     _driversRemovedSub?.cancel();
     _ownLocationSub?.cancel();
+    _incidentSub?.cancel();
     _simTimer?.cancel();
     super.dispose();
+  }
+
+  // ---------------- INCIDENT LISTENER (Supabase) ----------------
+  void _listenIncidents() {
+    try {
+      final client = Supabase.instance.client;
+      _incidentSub = client
+          .from('incidents')
+          .stream(primaryKey: ['id'])
+          .listen(
+            (event) {
+              try {
+                // event usually is List<Map<String, dynamic>>
+                final rows = (event as List).cast<Map<String, dynamic>>();
+                final list = rows.map((row) {
+                  double lat = 0.0, lng = 0.0;
+                  try {
+                    lat = (row['latitude'] as num?)?.toDouble() ?? 0.0;
+                    lng = (row['longitude'] as num?)?.toDouble() ?? 0.0;
+                  } catch (_) {}
+                  return _Incident(
+                    id: row['id']?.toString() ?? UniqueKey().toString(),
+                    type: (row['type'] as String?) ?? 'unknown',
+                    note: row['note'] as String?,
+                    imageUrl: row['image_url'] as String?,
+                    lat: lat,
+                    lng: lng,
+                  );
+                }).toList();
+
+                setState(() {
+                  _incidents
+                    ..clear()
+                    ..addAll(list);
+                });
+              } catch (e, st) {
+                debugPrint('[Incidents] parse error: $e\n$st');
+              }
+            },
+            onError: (err) {
+              debugPrint('[Incidents] stream error: $err');
+            },
+          );
+    } catch (e, st) {
+      debugPrint('[Incidents] listen failed: $e\n$st');
+    }
   }
 
   // ---------------- Firebase Listeners ----------------
@@ -114,6 +172,7 @@ class _LiveMapScreenState extends State<LiveMapScreen> {
 
   void _listenOwnLocation() {
     final ref = _db.ref('drivers/${widget.driverId}/location');
+
     _ownLocationSub = ref.onValue.listen(
       (event) {
         final v = event.snapshot.value as Map<Object?, Object?>?;
@@ -129,66 +188,50 @@ class _LiveMapScreenState extends State<LiveMapScreen> {
         _centerMapOnce();
       },
       onError: (err) {
-        print('[MapScreen] ownLocationSub error: $err');
+        debugPrint('[MapScreen] ownLocationSub error: $err');
       },
     );
   }
 
-  // ---------------- Map helpers ----------------
-  void _centerMapOnce() {
-    if (_ownLocation != null && !_hasCenteredOnce) {
-      _mapController.move(_ownLocation!, 15.0);
-      _hasCenteredOnce = true;
-    }
-  }
-
-  Future<void> _recenterToOwnLocation() async {
-    if (_ownLocation != null) {
-      _mapController.move(_ownLocation!, 15);
-      return;
-    }
-    try {
-      final p =
-          await Geolocator.getLastKnownPosition() ??
-          await Geolocator.getCurrentPosition();
-      _mapController.move(LatLng(p.latitude, p.longitude), 15);
-    } catch (_) {}
-  }
-
   // ---------------- Restricted zones ----------------
   void _listenRestrictedZones() async {
-    final ref = _db.ref('restricted_zones');
-    final snap = await ref.get();
-    if (snap.exists) {
-      final map = snap.value as Map<Object?, Object?>;
-      map.forEach((key, value) {
-        final v = value as Map<Object?, Object?>?;
-        if (v == null) return;
-        final poly = <LatLng>[];
-        final rawPoly = v['polygon'] as List<dynamic>?;
-        if (rawPoly != null) {
-          for (final p in rawPoly) {
-            final m = p as Map<Object?, Object?>;
-            final lat = (m['lat'] as num?)?.toDouble();
-            final lng = (m['lng'] as num?)?.toDouble();
-            if (lat != null && lng != null) poly.add(LatLng(lat, lng));
+    try {
+      final ref = _db.ref('restricted_zones');
+      final snap = await ref.get();
+      if (snap.exists) {
+        final map = snap.value as Map<Object?, Object?>;
+        map.forEach((key, value) {
+          final v = value as Map<Object?, Object?>?;
+          if (v == null) return;
+          final poly = <LatLng>[];
+          final rawPoly = v['polygon'] as List<dynamic>?;
+          if (rawPoly != null) {
+            for (final p in rawPoly) {
+              final m = p as Map<Object?, Object?>;
+              final lat = (m['lat'] as num?)?.toDouble();
+              final lng = (m['lng'] as num?)?.toDouble();
+              if (lat != null && lng != null) poly.add(LatLng(lat, lng));
+            }
           }
-        }
-        final zone = _Zone(
-          id: key.toString(),
-          name: v['name']?.toString() ?? 'Zone',
-          polygon: poly,
-          active: (v['active'] ?? true) == true,
-        );
-        _restrictedZones.add(zone);
-      });
-      setState(() {});
-    }
+          final zone = _Zone(
+            id: key.toString(),
+            name: v['name']?.toString() ?? 'Zone',
+            polygon: poly,
+            active: (v['active'] ?? true) == true,
+          );
+          _restrictedZones.add(zone);
+        });
+        setState(() {});
+      }
 
-    ref.onChildChanged.listen((event) {
-      _restrictedZones.clear();
-      _listenRestrictedZones();
-    });
+      // subscribe to changes
+      ref.onChildChanged.listen((event) {
+        _restrictedZones.clear();
+        _listenRestrictedZones();
+      });
+    } catch (e, st) {
+      debugPrint('[Zones] listen error: $e\n$st');
+    }
   }
 
   bool _pointInPolygon(LatLng point, List<LatLng> polygon) {
@@ -242,9 +285,103 @@ class _LiveMapScreenState extends State<LiveMapScreen> {
     );
   }
 
+  // ---------------- INCIDENT MARKERS ----------------
+  List<Marker> _buildIncidentMarkers() {
+    final markers = <Marker>[];
+
+    for (final i in _incidents) {
+      // skip invalid coords
+      if (i.lat == 0.0 && i.lng == 0.0) continue;
+
+      markers.add(
+        Marker(
+          width: 40,
+          height: 40,
+          point: LatLng(i.lat, i.lng),
+          child: GestureDetector(
+            onTap: () => _showIncidentPopup(i),
+            child: Icon(_getIncidentIcon(i.type), color: Colors.red, size: 30),
+          ),
+        ),
+      );
+    }
+
+    return markers;
+  }
+
+  IconData _getIncidentIcon(String type) {
+    switch (type.toLowerCase()) {
+      case "wildlife":
+      case "wildlife sighting":
+        return Icons.pets;
+      case "emergency":
+        return Icons.warning;
+      case "fire":
+        return Icons.local_fire_department;
+      case "road block":
+      case "road_block":
+        return Icons.block;
+      case "vehicle breakdown":
+      case "breakdown":
+        return Icons.car_repair;
+      default:
+        return Icons.report_problem;
+    }
+  }
+
+  void _showIncidentPopup(_Incident i) {
+    showModalBottomSheet(
+      context: context,
+      builder: (_) => Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              i.type.toUpperCase(),
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 10),
+            if (i.note != null) Text(i.note!),
+            const SizedBox(height: 10),
+            if (i.imageUrl != null)
+              Image.network(
+                i.imageUrl!,
+                width: double.infinity,
+                errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ---------------- Map helpers ----------------
+  void _centerMapOnce() {
+    if (_ownLocation != null && !_hasCenteredOnce) {
+      _mapController.move(_ownLocation!, 15.0);
+      _hasCenteredOnce = true;
+    }
+  }
+
+  Future<void> _recenterToOwnLocation() async {
+    if (_ownLocation != null) {
+      _mapController.move(_ownLocation!, 15);
+      return;
+    }
+    try {
+      final p =
+          await Geolocator.getLastKnownPosition() ??
+          await Geolocator.getCurrentPosition();
+      _mapController.move(LatLng(p.latitude, p.longitude), 15);
+    } catch (_) {}
+  }
+
   // ---------------- Markers ----------------
   List<Marker> _buildJeepMarkers() {
     final markers = <Marker>[];
+
     if (_ownLocation != null) {
       markers.add(
         Marker(
@@ -255,6 +392,7 @@ class _LiveMapScreenState extends State<LiveMapScreen> {
         ),
       );
     }
+
     _otherJeeps.forEach((id, latlng) {
       markers.add(
         Marker(
@@ -265,6 +403,7 @@ class _LiveMapScreenState extends State<LiveMapScreen> {
         ),
       );
     });
+
     return markers;
   }
 
@@ -359,7 +498,9 @@ class _LiveMapScreenState extends State<LiveMapScreen> {
             urlTemplate: "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
             userAgentPackageName: 'com.example.yala_driver_app',
           ),
-          MarkerLayer(markers: _buildJeepMarkers()),
+          MarkerLayer(
+            markers: [..._buildJeepMarkers(), ..._buildIncidentMarkers()],
+          ),
           PolygonLayer(
             polygons: _restrictedZones.map((z) {
               return Polygon(
@@ -374,7 +515,6 @@ class _LiveMapScreenState extends State<LiveMapScreen> {
           ),
         ],
       ),
-
       floatingActionButton: Column(
         mainAxisAlignment: MainAxisAlignment.end,
         children: [
@@ -383,9 +523,7 @@ class _LiveMapScreenState extends State<LiveMapScreen> {
             onPressed: _recenterToOwnLocation,
             child: const Icon(Icons.my_location),
           ),
-
           const SizedBox(height: 10),
-
           FloatingActionButton(
             heroTag: "zoom_in",
             onPressed: () {
@@ -396,9 +534,7 @@ class _LiveMapScreenState extends State<LiveMapScreen> {
             },
             child: const Icon(Icons.add),
           ),
-
           const SizedBox(height: 10),
-
           FloatingActionButton(
             heroTag: "zoom_out",
             onPressed: () {
@@ -409,9 +545,7 @@ class _LiveMapScreenState extends State<LiveMapScreen> {
             },
             child: const Icon(Icons.remove),
           ),
-
           const SizedBox(height: 10),
-
           FloatingActionButton(
             heroTag: "sim",
             onPressed: _simRunning
@@ -425,9 +559,31 @@ class _LiveMapScreenState extends State<LiveMapScreen> {
   }
 }
 
+// ---------------- INCIDENT MODEL ----------------
+
+class _Incident {
+  final String id;
+  final String type;
+  final String? note;
+  final String? imageUrl;
+  final double lat;
+  final double lng;
+
+  _Incident({
+    required this.id,
+    required this.type,
+    required this.lat,
+    required this.lng,
+    this.note,
+    this.imageUrl,
+  });
+}
+
 // ---------------- Marker Widgets ----------------
+
 class _OwnMarkerWidget extends StatelessWidget {
   const _OwnMarkerWidget();
+
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -477,11 +633,13 @@ class _OtherJeepMarker extends StatelessWidget {
 }
 
 // ---------------- Restricted Zone Model ----------------
+
 class _Zone {
   final String id;
   final String name;
   final List<LatLng> polygon;
   final bool active;
+
   _Zone({
     required this.id,
     required this.name,

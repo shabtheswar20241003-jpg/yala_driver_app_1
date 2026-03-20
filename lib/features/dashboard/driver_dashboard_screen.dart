@@ -120,7 +120,31 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
             ),
             const SizedBox(height: 12),
 
-
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: () {
+                  // debug print so we see the button press in logs
+                  debugPrint('[Dashboard] Report Incident pressed');
+                  try {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const IncidentReportScreen(),
+                      ),
+                    );
+                  } catch (e, st) {
+                    debugPrint('[Dashboard] Navigator error: $e\n$st');
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          AppTranslations.t('could_not_open_incident_screen') +
+                              ': $e',
+                        ),
+                      ),
+                    );
+                  }
+                },
                 icon: const Icon(Icons.report),
                 label: Text(AppTranslations.t('report_incident')),
               ),

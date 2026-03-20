@@ -581,27 +581,6 @@ class _Incident {
 
 // ---------------- Marker Widgets ----------------
 
-class _OwnMarkerWidget extends StatelessWidget {
-  const _OwnMarkerWidget();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.blueAccent,
-        shape: BoxShape.circle,
-        boxShadow: [
-          BoxShadow(color: Colors.black26, blurRadius: 6, offset: Offset(0, 2)),
-        ],
-      ),
-      child: const Padding(
-        padding: EdgeInsets.all(8.0),
-        child: Icon(Icons.directions_bus, color: Colors.white, size: 28),
-      ),
-    );
-  }
-}
-
 class _OtherJeepMarker extends StatelessWidget {
   final String driverId;
   const _OtherJeepMarker({required this.driverId});

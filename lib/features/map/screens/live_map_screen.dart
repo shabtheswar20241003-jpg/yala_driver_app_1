@@ -379,6 +379,33 @@ class _LiveMapScreenState extends State<LiveMapScreen> {
   }
 
   // ---------------- Markers ----------------
+  List<Marker> _buildJeepMarkers() {
+    final markers = <Marker>[];
+
+    if (_ownLocation != null) {
+      markers.add(
+        Marker(
+          width: 100,
+          height: 100,
+          point: _ownLocation!,
+          child: const _OwnMarkerWidget(),
+        ),
+      );
+    }
+
+    _otherJeeps.forEach((id, latlng) {
+      markers.add(
+        Marker(
+          width: 50,
+          height: 50,
+          point: latlng,
+          child: _OtherJeepMarker(driverId: id),
+        ),
+      );
+    });
+
+    return markers;
+  }
 
   // ---------------- In-app Simulator ----------------
   void _startInAppSimulation({

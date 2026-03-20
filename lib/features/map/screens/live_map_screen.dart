@@ -408,6 +408,76 @@ class _LiveMapScreenState extends State<LiveMapScreen> {
   }
 
   // ---------------- In-app Simulator ----------------
+  void _startInAppSimulation({
+    int count = 6,
+    int intervalMs = 3000,
+    double spread = 0.01,
+  }) {
+    if (_simRunning) return;
+    final rnd = Random();
+    _simJeeps.clear();
+    final base = _ownLocation ?? LatLng(6.905, 79.861);
+
+    for (var i = 0; i < count; i++) {
+      final id = 'sim_inapp_${i + 1}';
+      final lat = base.latitude + (rnd.nextDouble() - 0.5) * spread;
+      final lng = base.longitude + (rnd.nextDouble() - 0.5) * spread;
+      _simJeeps.add({
+        'id': id,
+        'lat': lat,
+        'lng': lng,
+        'angle': rnd.nextDouble() * 360,
+      });
+    }
+
+    _simTimer = Timer.periodic(Duration(milliseconds: intervalMs), (t) async {
+      final now = DateTime.now().toIso8601String();
+      for (var s in _simJeeps) {
+        final jitterLat = (rnd.nextDouble() - 0.5) * 0.0003;
+        final jitterLng = (rnd.nextDouble() - 0.5) * 0.0003;
+        s['lat'] = (s['lat'] as double) + jitterLat;
+        s['lng'] = (s['lng'] as double) + jitterLng;
+
+        final payload = {
+          'lat': s['lat'],
+          'lng': s['lng'],
+          'accuracy': 5 + rnd.nextDouble() * 10,
+          'speed': rnd.nextDouble() * 4,
+          'timestamp': now,
+        };
+
+        try {
+          await _db.ref('drivers/${s['id']}/location').set(payload);
+          await _db.ref('drivers/${s['id']}/meta').set({
+            'jeep_id': s['id'],
+            'display_name': 'Sim ${s['id']}',
+          });
+        } catch (e) {
+          debugPrint('[Sim] write error for ${s['id']}: $e');
+        }
+      }
+    });
+
+    setState(() => _simRunning = true);
+  }
+
+  Future<void> _stopInAppSimulation({bool cleanupNodes = true}) async {
+    _simTimer?.cancel();
+    _simTimer = null;
+    setState(() => _simRunning = false);
+
+    if (cleanupNodes) {
+      for (var s in _simJeeps) {
+        try {
+          await _db.ref('drivers/${s['id']}').remove();
+        } catch (e) {
+          debugPrint('[Sim] cleanup error for ${s['id']}: $e');
+        }
+      }
+    }
+
+    _simJeeps.clear();
+  }
 
   @override
   Widget build(BuildContext context) {

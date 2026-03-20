@@ -6,6 +6,15 @@ class IncidentModel {
   final double latitude;
   final double longitude;
 
+  IncidentModel({
+    required this.id,
+    required this.type,
+    required this.title,
+    required this.latitude,
+    required this.longitude,
+    this.imageUrl,
+  });
+
   factory IncidentModel.fromJson(Map<String, dynamic> json) {
     return IncidentModel(
       id: json["id"],

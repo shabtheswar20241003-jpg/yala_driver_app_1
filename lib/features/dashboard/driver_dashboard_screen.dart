@@ -74,7 +74,7 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
             Card(
               child: ListTile(
                 leading: const Icon(Icons.directions_car, color: Colors.green),
-                title: Text(('jeep_id')),
+                title: Text(AppTranslations.t('jeep_id')),
                 subtitle: Text(widget.jeepId),
               ),
             ),
@@ -84,7 +84,7 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
             Card(
               child: ListTile(
                 leading: const Icon(Icons.map, color: Colors.green),
-                title: Text(('assigned_block')),
+                title: Text(AppTranslations.t('assigned_block')),
                 subtitle: Text(widget.block),
               ),
             ),
@@ -98,7 +98,9 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
                   // Check that driverId exists before navigating
                   if (widget.driverId.isEmpty) {
                     ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text(('driver_id_missing'))),
+                      SnackBar(
+                        content: Text(AppTranslations.t('driver_id_missing')),
+                      ),
                     );
                     return;
                   }
@@ -113,7 +115,7 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
                   );
                 },
                 icon: const Icon(Icons.map),
-                label: Text(('open_live_map')),
+                label: Text(AppTranslations.t('open_live_map')),
               ),
             ),
             const SizedBox(height: 12),

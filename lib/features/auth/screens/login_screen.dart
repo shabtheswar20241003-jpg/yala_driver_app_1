@@ -79,58 +79,134 @@ class _LoginScreenState extends State<LoginScreen> {
     final langProvider = context.watch<LanguageProvider>();
 
     return Scaffold(
-      appBar: AppBar(title: const Text("Driver Login")),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Align(
-              alignment: Alignment.topRight,
-              child: DropdownButton<String>(
-                value: langProvider.lang,
-                items: const [
-                  DropdownMenuItem(value: 'en', child: Text("English")),
-                  DropdownMenuItem(value: 'si', child: Text("සිංහල")),
-                  DropdownMenuItem(value: 'ta', child: Text("தமிழ்")),
+      body: Stack(
+        children: [
+          /// 🔹 BACKGROUND IMAGE
+          SizedBox.expand(
+            child: Image.asset("assets/images/login_bg.png", fit: BoxFit.cover),
+          ),
+
+          /// 🔹 DARK OVERLAY
+          Container(color: Colors.black.withOpacity(0.6)),
+
+          /// 🔹 CONTENT
+          SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                children: [
+                  /// 🔹 TOP BAR (Yala 360 + Language)
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        "YALA 360",
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: 1,
+                        ),
+                      ),
+
+                      DropdownButton<String>(
+                        dropdownColor: Colors.black,
+                        value: langProvider.lang,
+                        style: const TextStyle(color: Colors.white),
+                        underline: const SizedBox(),
+                        items: const [
+                          DropdownMenuItem(value: 'en', child: Text("English")),
+                          DropdownMenuItem(value: 'si', child: Text("සිංහල")),
+                          DropdownMenuItem(value: 'ta', child: Text("தமிழ்")),
+                        ],
+                        onChanged: (value) {
+                          if (value != null) {
+                            langProvider.changeLanguage(value);
+                          }
+                        },
+                      ),
+                    ],
+                  ),
+
+                  const Spacer(),
+
+                  /// 🔹 LOGIN TITLE
+                  const Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      "LOGIN",
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 40,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 30),
+
+                  /// 🔹 USERNAME
+                  TextField(
+                    controller: _usernameController,
+                    style: const TextStyle(color: Colors.white),
+                    decoration: InputDecoration(
+                      filled: true,
+                      fillColor: Colors.white.withOpacity(0.2),
+                      labelText: AppTranslations.t('username'),
+                      labelStyle: const TextStyle(color: Colors.white70),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  /// 🔹 PASSWORD
+                  TextField(
+                    controller: _passwordController,
+                    obscureText: true,
+                    style: const TextStyle(color: Colors.white),
+                    decoration: InputDecoration(
+                      filled: true,
+                      fillColor: Colors.white.withOpacity(0.2),
+                      labelText: AppTranslations.t('password'),
+                      labelStyle: const TextStyle(color: Colors.white70),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 25),
+
+                  /// 🔹 LOGIN BUTTON
+                  SizedBox(
+                    width: double.infinity,
+                    height: 55,
+                    child: ElevatedButton(
+                      onPressed: _loading ? null : _login,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.green.shade700,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      child: _loading
+                          ? const CircularProgressIndicator(color: Colors.white)
+                          : Text(
+                              AppTranslations.t('login'),
+                              style: const TextStyle(fontSize: 16),
+                            ),
+                    ),
+                  ),
+
+                  const Spacer(),
                 ],
-                onChanged: (value) {
-                  if (value != null) {
-                    langProvider.changeLanguage(value);
-                  }
-                },
               ),
             ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _usernameController,
-              decoration: InputDecoration(
-                labelText: AppTranslations.t('username'),
-                border: const OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: _passwordController,
-              obscureText: true,
-              decoration: InputDecoration(
-                labelText: AppTranslations.t('password'),
-                border: const OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 24),
-            SizedBox(
-              width: double.infinity,
-              height: 50,
-              child: ElevatedButton(
-                onPressed: _loading ? null : _login,
-                child: _loading
-                    ? const CircularProgressIndicator(color: Colors.white)
-                    : Text(AppTranslations.t('login')),
-              ),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

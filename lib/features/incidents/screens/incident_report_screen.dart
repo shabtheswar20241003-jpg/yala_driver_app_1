@@ -79,6 +79,36 @@ class _IncidentReportScreenState extends State<IncidentReportScreen> {
 
   // ---------------- IMAGE UPLOAD ----------------
 
+  Future<String?> uploadImage() async {
+    if (imageFile == null) return null;
+
+    try {
+      final fileName = const Uuid().v4();
+
+      final ext = path.extension(imageFile!.path);
+
+      final filePath = "incidents/$fileName$ext";
+
+      await SupabaseConfig.client.storage
+          .from("incident-images")
+          .upload(filePath, imageFile!);
+
+      final imageUrl = SupabaseConfig.client.storage
+          .from("incident-images")
+          .getPublicUrl(filePath);
+
+      return imageUrl;
+    } catch (e) {
+      debugPrint("Image upload error: $e");
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text("Image upload failed")));
+
+      return null;
+    }
+  }
+
   // ---------------- SUBMIT INCIDENT ----------------
 
   Future<void> submitIncident() async {

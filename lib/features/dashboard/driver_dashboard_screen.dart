@@ -4,6 +4,8 @@ import '../../../features/map/screens/live_map_screen.dart'; // adjust path if y
 import '../../../core/services/location_service.dart';
 import '../../../features/incidents/screens/incident_report_screen.dart';
 import '../../../core/translations/app_translations.dart';
+import '../../../features/messages/screens/message_screen.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class DriverDashboardScreen extends StatefulWidget {
   final String driverId; // pass driver ID from login
@@ -153,10 +155,74 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
 
             SizedBox(
               width: double.infinity,
-              child: ElevatedButton.icon(
-                onPressed: () {},
-                icon: const Icon(Icons.message),
-                label: Text(AppTranslations.t('view_messages')),
+              child: StreamBuilder<List<Map<String, dynamic>>>(
+                stream: Supabase.instance.client
+                    .from('messages')
+                    .stream(primaryKey: ['id']),
+                builder: (context, snapshot) {
+                  final allMessages = snapshot.data ?? [];
+
+                  final unreadCount = allMessages.where((m) {
+                    final recipient = m['recipient_driver_id']?.toString();
+                    final isRead = m['is_read'] == true;
+                    return recipient == widget.driverId && !isRead;
+                  }).length;
+
+                  return ElevatedButton.icon(
+                    onPressed: () {
+                      if (widget.driverId.isEmpty) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text("Driver ID is missing")),
+                        );
+                        return;
+                      }
+
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) =>
+                              MessageScreen(driverId: widget.driverId),
+                        ),
+                      );
+                    },
+                    icon: Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        const Icon(Icons.message),
+                        if (unreadCount > 0)
+                          Positioned(
+                            right: -8,
+                            top: -8,
+                            child: Container(
+                              padding: const EdgeInsets.all(4),
+                              decoration: const BoxDecoration(
+                                color: Colors.red,
+                                shape: BoxShape.circle,
+                              ),
+                              constraints: const BoxConstraints(
+                                minWidth: 18,
+                                minHeight: 18,
+                              ),
+                              child: Text(
+                                unreadCount > 9 ? '9+' : '$unreadCount',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                                textAlign: TextAlign.center,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                    label: Text(
+                      unreadCount > 0
+                          ? "View Messages ($unreadCount)"
+                          : "View Messages",
+                    ),
+                  );
+                },
               ),
             ),
           ],

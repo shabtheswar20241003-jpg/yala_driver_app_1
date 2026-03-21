@@ -68,6 +68,7 @@ class _MessageScreenState extends State<MessageScreen> {
                 const SizedBox(height: 16),
                 Text(body),
                 const SizedBox(height: 16),
+
                 if (attachmentUrl != null && attachmentUrl.isNotEmpty) ...[
                   const Text(
                     'Attachment',
@@ -75,11 +76,33 @@ class _MessageScreenState extends State<MessageScreen> {
                   ),
                   const SizedBox(height: 8),
                   ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
+                    borderRadius: BorderRadius.circular(12),
                     child: Image.network(
                       attachmentUrl,
-                      errorBuilder: (_, __, ___) {
-                        return Text(attachmentUrl);
+                      width: double.infinity,
+                      fit: BoxFit.cover,
+                      loadingBuilder: (context, child, loadingProgress) {
+                        if (loadingProgress == null) return child;
+                        return const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 20),
+                          child: Center(child: CircularProgressIndicator()),
+                        );
+                      },
+                      errorBuilder: (context, error, stackTrace) {
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Image could not be loaded.',
+                              style: TextStyle(color: Colors.red),
+                            ),
+                            const SizedBox(height: 8),
+                            SelectableText(
+                              attachmentUrl,
+                              style: const TextStyle(fontSize: 12),
+                            ),
+                          ],
+                        );
                       },
                     ),
                   ),
@@ -92,7 +115,7 @@ class _MessageScreenState extends State<MessageScreen> {
     );
 
     final id = msg['id']?.toString();
-    if (id != null && (msg['is_read'] != true)) {
+    if (id != null && msg['is_read'] != true) {
       _markAsRead(id);
     }
   }
@@ -156,7 +179,7 @@ class _MessageScreenState extends State<MessageScreen> {
                     ),
                   ),
                   subtitle: Text(
-                    '$sender\n$time\n${body.length > 60 ? body.substring(0, 60) + '...' : body}',
+                    '$sender\n$time\n${body.length > 60 ? '${body.substring(0, 60)}...' : body}',
                   ),
                   isThreeLine: true,
                   onTap: () => _showMessageDetails(msg),

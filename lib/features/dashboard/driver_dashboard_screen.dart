@@ -218,8 +218,8 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
                     ),
                     label: Text(
                       unreadCount > 0
-                          ? "View Messages ($unreadCount)"
-                          : "View Messages",
+                          ? AppTranslations.t("View Messages ($unreadCount)")
+                          : AppTranslations.t("View Messages"),
                     ),
                   );
                 },

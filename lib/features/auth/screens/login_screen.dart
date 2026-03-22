@@ -17,6 +17,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController _passwordController = TextEditingController();
 
   bool _loading = false;
+  bool _obscurePassword = true;
 
   Future<void> _login() async {
     final username = _usernameController.text.trim();
@@ -165,7 +166,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   /// 🔹 PASSWORD
                   TextField(
                     controller: _passwordController,
-                    obscureText: true,
+                    obscureText: _obscurePassword,
                     style: const TextStyle(color: Colors.white),
                     decoration: InputDecoration(
                       filled: true,
@@ -174,6 +175,19 @@ class _LoginScreenState extends State<LoginScreen> {
                       labelStyle: const TextStyle(color: Colors.white70),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(10),
+                      ),
+                      suffixIcon: IconButton(
+                        onPressed: () {
+                          setState(() {
+                            _obscurePassword = !_obscurePassword;
+                          });
+                        },
+                        icon: Icon(
+                          _obscurePassword
+                              ? Icons.visibility_off
+                              : Icons.visibility,
+                          color: Colors.white70,
+                        ),
                       ),
                     ),
                   ),

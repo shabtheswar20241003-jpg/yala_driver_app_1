@@ -19,6 +19,7 @@ class AppTranslations {
       'assigned_block': 'අනුමත බ්ලොක්',
       'open_live_map': 'සජීවී සිතියම',
       'report_incident': 'සිද්ධිය වාර්තා කරන්න',
+      'View Messages': 'පණිවිඩ',
     },
     'ta': {
       'login': 'உள்நுழை',
@@ -29,6 +30,7 @@ class AppTranslations {
       'assigned_block': 'ஒத்துக்கொள்ளப்பட்ட பகுதி',
       'open_live_map': 'நேரடி வரைபடம்',
       'report_incident': 'சம்பவம் அறிக்கை',
+      'View Messages': 'செய்திகளைப் பார்க்க',
     },
   };
 
